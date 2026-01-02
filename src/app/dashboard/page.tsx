@@ -1,26 +1,45 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Users, Eye, TrendingUp, Globe, Clock, Activity } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import TrackingScript from './tracking-code';
 
-// Mock Data
-const viewsData = [
-    { time: '00:00', views: 120 }, { time: '04:00', views: 80 },
-    { time: '08:00', views: 450 }, { time: '12:00', views: 980 },
-    { time: '16:00', views: 850 }, { time: '20:00', views: 600 },
-    { time: '23:59', views: 320 },
-];
-
-const liveVisitors = [
-    { ip: '188.23.45.xx', location: 'Kuwait City, KW', page: '/news/kerala-latest', time: 'Just now' },
-    { ip: '92.11.34.xx', location: 'Salmiya, KW', page: '/images/gallery', time: '1m ago' },
-    { ip: '104.22.xx.xx', location: 'Dubai, UAE', page: '/news/uae-visa', time: '2m ago' },
-    { ip: '45.33.22.xx', location: 'Kochi, IN', page: '/', time: '5m ago' },
-];
-
 export default function Dashboard() {
+    const [data, setData] = useState<{
+        totalViews: number;
+        activeNow: number;
+        chartData: any[];
+        recent: any[];
+    } | null>(null);
+
+    // Poll for updates every 5 seconds
+    useEffect(() => {
+        const fetchStats = async () => {
+            try {
+                const res = await fetch('/api/stats');
+                if (res.ok) {
+                    const json = await res.json();
+                    setData(json);
+                }
+            } catch (e) {
+                console.error('Failed to fetch stats');
+            }
+        };
+
+        fetchStats();
+        const interval = setInterval(fetchStats, 5000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const chartData = data?.chartData || [];
+    const liveVisitors = data?.recent || [];
+
+    // Quick calculations or fallbacks
+    const totalViews = data?.totalViews || 0;
+    const activeNow = data?.activeNow || 0;
+
     return (
         <div className="min-h-screen bg-black text-white p-6 md:p-12 pt-24 selection:bg-yellow-500/30">
             <div className="max-w-7xl mx-auto space-y-8">
@@ -31,19 +50,40 @@ export default function Dashboard() {
                         <h1 className="text-3xl font-bold">Analytics Dashboard</h1>
                         <p className="text-gray-400">Live tracker for kuwaitmalayali.com</p>
                     </div>
-                    <div className="flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 text-green-500 rounded-full text-sm animate-pulse">
-                        <Activity className="w-4 h-4" />
-                        <span>System Operational</span>
-                    </div>
-                </div>
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={async () => {
+                                const locations = ['Kuwait City, KW', 'Dubai, AE', 'Kochi, IN', 'London, UK', 'New York, US'];
+                                const pages = ['/news/breaking', '/gallery', '/about', '/', '/contact'];
+                                await fetch('/api/track', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        path: pages[Math.floor(Math.random() * pages.length)],
+                                        referrer: 'https://google.com',
+                                        location: locations[Math.floor(Math.random() * locations.length)] // Client-side simulation hint
+                                    })
+                                });
+                                // trigger immediate refresh if in same cycle (optional, dashboard polls anyway)
+                            }}
+                            className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-semibold rounded-full transition flex items-center gap-2"
+                        >
+                            <Activity className="w-4 h-4" />
+                            Simulate Visitor
+                        </button>
+                        <div className="flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 text-green-500 rounded-full text-sm animate-pulse">
+                            <Activity className="w-4 h-4" />
+                            <span>System Operational</span>
+                        </div>
+                    </div>        </div>
 
                 {/* Overview Stats */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {[
-                        { label: 'Active Readers', value: '1,234', sub: '+12% from yesterday', icon: Users, color: 'text-blue-400' },
-                        { label: 'Page Views (Today)', value: '45.2K', sub: 'Daily Peak: 12 PM', icon: Eye, color: 'text-yellow-400' },
-                        { label: 'Avg. Session', value: '4m 32s', sub: '+30s increase', icon: Clock, color: 'text-purple-400' },
-                        { label: 'Top Country', value: 'Kuwait', sub: '85% of traffic', icon: Globe, color: 'text-green-400' },
+                        { label: 'Active Sessions', value: activeNow, sub: 'Right Now', icon: Users, color: 'text-blue-400' },
+                        { label: 'Total Page Views', value: totalViews, sub: 'All Time (In-Memory)', icon: Eye, color: 'text-yellow-400' },
+                        { label: 'Avg. Session', value: 'Live', sub: 'Calculating...', icon: Clock, color: 'text-purple-400' },
+                        { label: 'Top Country', value: 'Kuwait', sub: 'Mostly detected', icon: Globe, color: 'text-green-400' },
                     ].map((stat, i) => (
                         <motion.div
                             key={i}
@@ -71,7 +111,7 @@ export default function Dashboard() {
                         <h3 className="text-lg font-semibold mb-6">Traffic Overview (24h)</h3>
                         <div className="h-[300px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={viewsData}>
+                                <AreaChart data={chartData}>
                                     <defs>
                                         <linearGradient id="colorViews" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor="#facc15" stopOpacity={0.3} />
@@ -100,20 +140,22 @@ export default function Dashboard() {
                             </span>
                             Live Visitors
                         </h3>
-                        <div className="space-y-4 flex-1 overflow-auto">
+                        <div className="space-y-4 flex-1 overflow-auto max-h-[400px]">
+                            {liveVisitors.length === 0 && <div className="text-gray-500 text-sm">Waiting for first visitor...</div>}
                             {liveVisitors.map((visit, i) => (
-                                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
+                                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 animate-in fade-in slide-in-from-right-4">
                                     <div>
                                         <div className="text-sm font-medium">{visit.location}</div>
-                                        <div className="text-xs text-gray-500 truncate max-w-[150px]">{visit.page}</div>
+                                        <div className="text-xs text-gray-500 truncate max-w-[150px]">{visit.path}</div>
                                     </div>
                                     <div className="text-right">
                                         <div className="text-xs text-yellow-500">{visit.ip}</div>
-                                        <div className="text-[10px] text-gray-600">{visit.time}</div>
+                                        <div className="text-[10px] text-gray-600">
+                                            {new Date(visit.timestamp).toLocaleTimeString()}
+                                        </div>
                                     </div>
                                 </div>
                             ))}
-                            <div className="text-center text-xs text-gray-500 pt-4">Updating in real-time...</div>
                         </div>
                     </div>
                 </div>

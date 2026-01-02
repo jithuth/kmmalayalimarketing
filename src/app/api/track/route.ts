@@ -1,18 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { addPageView } from '@/lib/analytics';
 
 export async function POST(req: NextRequest) {
     try {
         const data = await req.json();
+        const headers = req.headers;
 
-        // In a real application, you would save this data to a database (MongoDB, PostgreSQL, etc.)
-        // For now, we will just log it to the console to simulate receiving data.
-        console.log('[Analytics Received]', {
-            ip: req.headers.get('x-forwarded-for') || '127.0.0.1',
-            ...data
+        // Attempt to get IP
+        let ip = headers.get('x-forwarded-for') || headers.get('x-real-ip') || '127.0.0.1';
+        if (ip.includes(',')) ip = ip.split(',')[0];
+
+        // Simulate Geo-location (since we don't have a real GeoIP DB here)
+        // In production, use Vercel's `req.geo` or a service like MaxMind
+        const city = headers.get('x-vercel-ip-city') || 'Unknown City';
+        const country = headers.get('x-vercel-ip-country') || 'Unknown';
+        const location = city !== 'Unknown City' ? `${city}, ${country}` : 'Kuwait City, KW'; // Fallback for demo
+
+        addPageView({
+            path: data.path || '/',
+            referrer: data.referrer || '',
+            timestamp: new Date().toISOString(),
+            ip,
+            location
         });
 
         return NextResponse.json({ success: true });
     } catch (error) {
+        console.error('Tracking Error:', error);
         return NextResponse.json({ success: false }, { status: 500 });
     }
 }
