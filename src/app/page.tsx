@@ -21,11 +21,34 @@ export default function Home() {
   const [hashtags, setHashtags] = useState('');
   const [processedImage, setProcessedImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isGeneratingTags, setIsGeneratingTags] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Helper to generate hashtags
-  const generateHashtags = (text: string) => {
-    const stopWords = ['the', 'is', 'in', 'at', 'of', 'on', 'and', 'to', 'for', 'with', 'a', 'an', 'by', 'from'];
+  // Helper to generate hashtags using Gemini
+  const fetchHashtags = async (title: string, articleUrl: string) => {
+    setIsGeneratingTags(true);
+    setHashtags('Generating tags...');
+    try {
+      const res = await fetch('/api/generate-hashtags', {
+        method: 'POST',
+        body: JSON.stringify({ title, url: articleUrl }),
+      });
+      const data = await res.json();
+      if (data.tags) {
+        setHashtags(data.tags);
+      } else {
+        setHashtags(generateLocalHashtags(title));
+      }
+    } catch (e) {
+      setHashtags(generateLocalHashtags(title));
+    } finally {
+      setIsGeneratingTags(false);
+    }
+  };
+
+  const generateLocalHashtags = (text: string) => {
+    const stopWords = ['the', 'is', 'in', 'at', 'of', 'on', 'and', 'to', 'for', 'with', 'a', 'an', 'by', 'from', 'news', 'update'];
     const words = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 2 && !stopWords.includes(w));
     const unique = Array.from(new Set(words));
     const tags = unique.slice(0, 8).map(w => `#${w}`);
@@ -50,7 +73,9 @@ export default function Home() {
         const title = data.title || '';
         setNewsData(data);
         setCustomTitle(title);
-        setHashtags(generateHashtags(title));
+
+        // Trigger AI Tag Generation
+        fetchHashtags(title, url);
         setStep('editor');
       } else {
         alert('Could not find a suitable image in this article.');
