@@ -21,16 +21,19 @@ export async function POST(req: NextRequest) {
         // Prompt including the request for specific behavior
         const prompt = `
     You are a social media expert for 'Kuwait Malayali', a news portal.
-    Generate 10 trending, relevant, and high-reach hashtags for this news article.
+    The provided news article might be in Malayalam. Analyze the Title and URL to understand the context.
+    
+    Generate 10 trending, relevant, and high-reach hashtags in **ENGLISH** (Latin script) only.
     
     Title: "${title}"
     URL: "${url}"
     
     Rules:
-    1. Always include #Kuwait #Kerala #KuwaitMalayali
-    2. Tags should be relevant to the content (mix of English and Malayalam transliterated if popular).
-    3. Return ONLY the hashtags separated by spaces. No introduction, no bullets.
-    4. Example output: #Kuwait #Kerala #KuwaitMalayali #BreakingNews #ExpatLife #KeralaPolitics
+    1. **Strictly English/Latin Characters Only**. Do not use Malayalam script (e.g., use #Kerala, NOT #കേരളം).
+    2. Always include: #Kuwait #Kerala #KuwaitMalayali
+    3. Translate the core topic of the news into English hashtags (e.g., if news is about "Rain", add #KuwaitRain).
+    4. Return ONLY the hashtags separated by spaces. No introduction, no bullets.
+    5. Example output: #Kuwait #Kerala #KuwaitMalayali #BreakingNews #ExpatLife #GulfNews
     `;
 
         const result = await model.generateContent(prompt);
