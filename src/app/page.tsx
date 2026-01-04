@@ -16,10 +16,24 @@ export default function Home() {
   const [newsData, setNewsData] = useState<{ title: string; image: string | null } | null>(null);
 
   // Editor state
+  // Editor state
   const [customTitle, setCustomTitle] = useState('');
+  const [hashtags, setHashtags] = useState('');
   const [processedImage, setProcessedImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Helper to generate hashtags
+  const generateHashtags = (text: string) => {
+    const stopWords = ['the', 'is', 'in', 'at', 'of', 'on', 'and', 'to', 'for', 'with', 'a', 'an', 'by', 'from'];
+    const words = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 2 && !stopWords.includes(w));
+    const unique = Array.from(new Set(words));
+    const tags = unique.slice(0, 8).map(w => `#${w}`);
+    if (!tags.includes('#Kuwait')) tags.push('#Kuwait');
+    if (!tags.includes('#Kerala')) tags.push('#Kerala');
+    if (!tags.includes('#KuwaitMalayali')) tags.push('#KuwaitMalayali');
+    return tags.join(' ');
+  };
 
   const handleScrape = async () => {
     if (!url) return;
@@ -33,8 +47,10 @@ export default function Home() {
       const data = await res.json();
 
       if (data.image) {
+        const title = data.title || '';
         setNewsData(data);
-        setCustomTitle(data.title || '');
+        setCustomTitle(title);
+        setHashtags(generateHashtags(title));
         setStep('editor');
       } else {
         alert('Could not find a suitable image in this article.');
@@ -250,6 +266,19 @@ export default function Home() {
                   />
                 </div>
 
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-400">
+                    <span className="text-yellow-500">#</span>
+                    Hashtags
+                  </label>
+                  <textarea
+                    value={hashtags}
+                    onChange={(e) => setHashtags(e.target.value)}
+                    placeholder="#news #update..."
+                    className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-sm text-gray-300 focus:border-yellow-500/50 outline-none resize-none h-24 font-mono"
+                  />
+                </div>
+
                 <div className="flex gap-3">
                   <button
                     onClick={generateCard}
@@ -305,7 +334,7 @@ export default function Home() {
                             if (navigator.share) {
                               await navigator.share({
                                 title: customTitle,
-                                text: `${customTitle}\n\nRead more: ${url}`,
+                                text: `${customTitle}\n\n${hashtags}\n\nRead more: ${url}`,
                                 files: [file],
                               });
                             } else {
@@ -349,7 +378,7 @@ export default function Home() {
                       {/* WhatsApp Share (Text Only) */}
                       <button
                         onClick={() => {
-                          const text = encodeURIComponent(`*${customTitle}*\n\nRead more: ${url}`);
+                          const text = encodeURIComponent(`*${customTitle}*\n\n${hashtags}\n\nRead more: ${url}`);
                           window.open(`https://wa.me/?text=${text}`, '_blank');
                         }}
                         className="p-3 rounded-full bg-[#25D366] text-white hover:scale-110 transition shadow-lg"
