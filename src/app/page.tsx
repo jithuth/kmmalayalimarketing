@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Loader2, Download, Type, LayoutTemplate, ArrowRight, RefreshCw, Share2, Facebook, Instagram, MessageCircle } from 'lucide-react';
+import { Search, Loader2, Download, Type, LayoutTemplate, ArrowRight, RefreshCw, Share2, Facebook, Instagram, MessageCircle, Video } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Comfortaa } from 'next/font/google';
 
@@ -26,21 +26,22 @@ export default function Home() {
 
   // Helper to generate hashtags
   // Helper to generate hashtags using Gemini
-  const fetchHashtags = async (title: string, articleUrl: string) => {
+  const fetchHashtags = async (title: string, articleUrl: string, description: string = '') => {
     setIsGeneratingTags(true);
     setHashtags('Generating tags...');
     try {
       const res = await fetch('/api/generate-hashtags', {
         method: 'POST',
-        body: JSON.stringify({ title, url: articleUrl }),
+        body: JSON.stringify({ title, url: articleUrl, description }),
       });
       const data = await res.json();
-      if (data.tags) {
+      if (data.tags && data.tags.length > 0) {
         setHashtags(data.tags);
       } else {
         setHashtags(generateLocalHashtags(title));
       }
     } catch (e) {
+      console.error("Hashtag generation error:", e);
       setHashtags(generateLocalHashtags(title));
     } finally {
       setIsGeneratingTags(false);
@@ -71,11 +72,12 @@ export default function Home() {
 
       if (data.image) {
         const title = data.title || '';
+        const description = data.description || '';
         setNewsData(data);
         setCustomTitle(title);
 
         // Trigger AI Tag Generation
-        fetchHashtags(title, url);
+        fetchHashtags(title, url, description);
         setStep('editor');
       } else {
         alert('Could not find a suitable image in this article.');
@@ -202,6 +204,126 @@ export default function Home() {
       setIsProcessing(false);
       alert('Failed to load image for processing');
     };
+  };
+
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+
+  const generateVideo = async () => {
+    if (!processedImage) return;
+    setIsGeneratingVideo(true);
+
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1080;
+      canvas.height = 1920;
+      const ctx = canvas.getContext('2d');
+
+      const img = new Image();
+      img.src = processedImage;
+      await new Promise(r => img.onload = r);
+
+      const stream = canvas.captureStream(30);
+
+      // Select best MIME type (prioritize MP4 for TikTok)
+      const mimeTypes = [
+        'video/mp4',
+        'video/mp4;codecs=h264',
+        'video/mp4;codecs=avc1',
+        'video/webm;codecs=h264',
+        'video/webm'
+      ];
+      const selectedMime = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
+      console.log(`Using MIME type: ${selectedMime}`);
+
+      const recorder = new MediaRecorder(stream, { mimeType: selectedMime });
+
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = () => {
+
+        const ext = selectedMime.includes('mp4') ? 'mp4' : 'webm';
+        const blob = new Blob(chunks, { type: selectedMime });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `news-story-${Date.now()}.${ext}`;
+        a.click();
+
+        // Warning if MP4 wasn't supported
+        if (ext !== 'mp4') {
+          alert('Note: Your browser does not support direct MP4 recording. A WebM file was generated instead. You may need to convert it for TikTok.');
+        }
+
+        // Automate: Copy Caption to Clipboard
+        const caption = `${customTitle}\n\n${hashtags}`;
+        try {
+          // Note: navigator.clipboard usually requires focus or user interaction, which is present here
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(caption).catch(err => console.error('Copy failed', err));
+          }
+        } catch (err) {
+          console.error('Failed to copy caption', err);
+        }
+
+        // Open TikTok Upload page
+        setTimeout(() => {
+          if (confirm('Video downloaded & Caption copied!\n\nOpen TikTok to upload now? (Just paste the caption there)')) {
+            window.open('https://www.tiktok.com/upload?lang=en', '_blank');
+          }
+        }, 500);
+
+        setIsGeneratingVideo(false);
+      };
+
+      recorder.start();
+
+      let startTime = Date.now();
+      const duration = 10000; // 10s
+
+      const draw = () => {
+        const now = Date.now();
+        const progress = Math.min((now - startTime) / duration, 1);
+
+        if (progress >= 1) {
+          recorder.stop();
+          return;
+        }
+
+        // Draw Background (Blurred & Zooming)
+        ctx!.fillStyle = '#000';
+        ctx!.fillRect(0, 0, 1080, 1920);
+
+        ctx!.save();
+        const scale = 1 + (progress * 0.1); // Slight zoom (1.0 to 1.1)
+
+        // Draw blurred BG
+        ctx!.filter = 'blur(40px)';
+        // Center the image as background, heavily scaled to fill
+        const bgScale = Math.max(1080 / img.width, 1920 / img.height) * scale;
+        const bgW = img.width * bgScale;
+        const bgH = img.height * bgScale;
+        ctx!.drawImage(img, (1080 - bgW) / 2, (1920 - bgH) / 2, bgW, bgH);
+
+        ctx!.restore();
+
+        // Draw Foreground (Sharp Card)
+        // Center it
+        const cardScale = Math.min(1080 / img.width, 1080 / img.height); // Fit width
+        const cardW = img.width * cardScale;
+        const cardH = img.height * cardScale;
+        const cardY = (1920 - cardH) / 2;
+
+        ctx!.drawImage(img, 0, cardY, cardW, cardH);
+
+        requestAnimationFrame(draw);
+      };
+
+      draw();
+    } catch (e) {
+      console.error(e);
+      alert('Video generation failed');
+      setIsGeneratingVideo(false);
+    }
   };
 
   // Generate initial preview on mount/change
@@ -343,112 +465,126 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Output Actions */}
-                {processedImage && (
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm flex flex-col items-center justify-center gap-4 p-4">
-
-                    <div className="flex flex-wrap items-center justify-center gap-3">
-                      {/* Native Share (Mobile/Supported) */}
-                      <button
-                        onClick={async () => {
-                          if (!processedImage) return;
-                          try {
-                            const blob = await (await fetch(processedImage)).blob();
-                            const file = new File([blob], 'news-card.png', { type: 'image/png' });
-
-                            if (navigator.share) {
-                              await navigator.share({
-                                title: customTitle,
-                                text: `${customTitle}\n\n${hashtags}\n\nRead more: ${url}`,
-                                files: [file],
-                              });
-                            } else {
-                              alert('Web Share not supported. Use the buttons below.');
-                            }
-                          } catch (err) {
-                            console.error('Error sharing:', err);
-                          }
-                        }}
-                        className="bg-yellow-500 text-black px-6 py-2 rounded-full font-bold hover:bg-yellow-400 transition transform hover:scale-105 flex items-center gap-2 shadow-xl"
-                      >
-                        <Share2 className="w-4 h-4" />
-                        Share App
-                      </button>
-
-                      <a
-                        href={processedImage}
-                        download={`news-card-${Date.now()}.png`}
-                        className="bg-white/10 backdrop-blur-md text-white border border-white/20 px-6 py-2 rounded-full font-semibold hover:bg-white/20 transition flex items-center gap-2"
-                      >
-                        <Download className="w-4 h-4" />
-                        Save
-                      </a>
-                    </div>
-
-                    <div className="flex gap-2 mt-2">
-                      {/* Add WhatsApp Channel URL */}
-                      <a
-                        href="https://whatsapp.com/channel/0029VbCcGt08fewpHoZYm91M"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-3 rounded-full bg-[#075E54] text-white hover:scale-110 transition shadow-lg"
-                        title="View WhatsApp Channel"
-                      >
-                        <div className="relative">
-                          <MessageCircle className="w-5 h-5 fill-current" />
-                          <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                        </div>
-                      </a>
-
-                      {/* WhatsApp Share (Text Only) */}
-                      <button
-                        onClick={() => {
-                          const text = encodeURIComponent(`*${customTitle}*\n\n${hashtags}\n\nRead more: ${url}`);
-                          window.open(`https://wa.me/?text=${text}`, '_blank');
-                        }}
-                        className="p-3 rounded-full bg-[#25D366] text-white hover:scale-110 transition shadow-lg"
-                        title="Share to WhatsApp"
-                      >
-                        <Share2 className="w-5 h-5" />
-                      </button>
-
-                      {/* Facebook (Link Only) */}
-                      <button
-                        onClick={() => {
-                          window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank');
-                        }}
-                        className="p-3 rounded-full bg-[#1877F2] text-white hover:scale-110 transition shadow-lg"
-                        title="Share Link to Facebook"
-                      >
-                        <Facebook className="w-5 h-5 fill-current" />
-                      </button>
-
-                      {/* Instagram (Manual Copy Hint) */}
-                      <button
-                        onClick={async () => {
-                          // Copy image to clipboard for manual pasting
-                          try {
-                            const blob = await (await fetch(processedImage)).blob();
-                            await navigator.clipboard.write([
-                              new ClipboardItem({
-                                [blob.type]: blob
-                              })
-                            ]);
-                            alert('Image copied to clipboard! Open Instagram and paste it (or create new post).');
-                          } catch (err) {
-                            alert('Could not copy image automatically. Please download it first.');
-                          }
-                        }}
-                        className="p-3 rounded-full bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] text-white hover:scale-110 transition shadow-lg"
-                        title="Copy Image for Instagram"
-                      >
-                        <Instagram className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
 
+              {processedImage && (
+                <div className="mt-6 flex flex-col items-center gap-4">
+
+                  <div className="flex flex-wrap items-center justify-center gap-3">
+                    {/* Native Share (Mobile/Supported) */}
+                    <button
+                      onClick={async () => {
+                        if (!processedImage) return;
+                        try {
+                          const blob = await (await fetch(processedImage)).blob();
+                          const file = new File([blob], 'news-card.png', { type: 'image/png' });
+
+                          if (navigator.share) {
+                            await navigator.share({
+                              title: customTitle,
+                              text: customTitle,
+                              files: [file],
+                            });
+                          } else {
+                            alert('Web Share not supported. Use the buttons below.');
+                          }
+                        } catch (err) {
+                          console.error('Error sharing:', err);
+                        }
+                      }}
+                      className="bg-yellow-500 text-black px-6 py-2 rounded-full font-bold hover:bg-yellow-400 transition transform hover:scale-105 flex items-center gap-2 shadow-xl"
+                    >
+                      <Share2 className="w-4 h-4" />
+                      Share App
+                    </button>
+
+                    <a
+                      href={processedImage}
+                      download={`news-card-${Date.now()}.png`}
+                      className="bg-white/10 backdrop-blur-md text-white border border-white/20 px-6 py-2 rounded-full font-semibold hover:bg-white/20 transition flex items-center gap-2"
+                    >
+                      <Download className="w-4 h-4" />
+                      Save
+                    </a>
+                  </div>
+
+                  <div className="flex gap-2">
+                    {/* Add WhatsApp Channel URL */}
+                    <a
+                      href="https://whatsapp.com/channel/0029VbCcGt08fewpHoZYm91M"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-3 rounded-full bg-[#075E54] text-white hover:scale-110 transition shadow-lg"
+                      title="View WhatsApp Channel"
+                    >
+                      <div className="relative">
+                        <MessageCircle className="w-5 h-5 fill-current" />
+                        <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                      </div>
+                    </a>
+
+                    {/* WhatsApp Share (Text Only) */}
+                    <button
+                      onClick={() => {
+                        const text = encodeURIComponent(`*${customTitle}*\n\n${hashtags}\n\nRead more: ${url}`);
+                        window.open(`https://wa.me/?text=${text}`, '_blank');
+                      }}
+                      className="p-3 rounded-full bg-[#25D366] text-white hover:scale-110 transition shadow-lg"
+                      title="Share to WhatsApp"
+                    >
+                      <Share2 className="w-5 h-5" />
+                    </button>
+
+                    {/* Facebook (Link Only) */}
+                    <button
+                      onClick={() => {
+                        window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank');
+                      }}
+                      className="p-3 rounded-full bg-[#1877F2] text-white hover:scale-110 transition shadow-lg"
+                      title="Share Link to Facebook"
+                    >
+                      <Facebook className="w-5 h-5 fill-current" />
+                    </button>
+
+                    {/* Instagram (Manual Copy Hint) */}
+                    <button
+                      onClick={async () => {
+                        // Copy image to clipboard for manual pasting
+                        try {
+                          const blob = await (await fetch(processedImage)).blob();
+                          await navigator.clipboard.write([
+                            new ClipboardItem({
+                              [blob.type]: blob
+                            })
+                          ]);
+                          alert('Image copied to clipboard! Open Instagram and paste it (or create new post).');
+                        } catch (err) {
+                          alert('Could not copy image automatically. Please download it first.');
+                        }
+                      }}
+                      className="p-3 rounded-full bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] text-white hover:scale-110 transition shadow-lg"
+                      title="Copy Image for Instagram"
+                    >
+                      <Instagram className="w-5 h-5" />
+                    </button>
+
+                    {/* TikTok Video Generator */}
+                    <button
+                      onClick={generateVideo}
+                      disabled={isGeneratingVideo}
+                      className="p-3 rounded-full bg-black border border-gray-700 text-white hover:scale-110 transition shadow-lg relative overflow-hidden"
+                      title="Generate TikTok Video"
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-r from-[#00f2ea] to-[#ff0050] opacity-20" />
+                      {isGeneratingVideo ? (
+                        <Loader2 className="w-5 h-5 animate-spin relative z-10" />
+                      ) : (
+                        <Video className="w-5 h-5 relative z-10" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </div>
         )}

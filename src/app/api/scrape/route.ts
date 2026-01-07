@@ -49,8 +49,15 @@ export async function POST(req: NextRequest) {
             image = `${urlObj.protocol}//${urlObj.host}${image.startsWith('/') ? '' : '/'}${image}`;
         }
 
+        // Try to get description
+        let description = $('meta[property="og:description"]').attr('content');
+        if (!description) {
+            description = $('meta[name="description"]').attr('content');
+        }
+
         return NextResponse.json({
             title: title || 'No Title Found',
+            description: description || '',
             image: image || null
         });
 

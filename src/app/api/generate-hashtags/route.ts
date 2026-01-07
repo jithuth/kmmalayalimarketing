@@ -8,7 +8,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 export async function POST(req: NextRequest) {
     try {
-        const { title, url } = await req.json();
+        const { title, url, description } = await req.json();
 
         if (!process.env.GEMINI_API_KEY) {
             console.warn("GEMINI_API_KEY Not Found");
@@ -21,11 +21,12 @@ export async function POST(req: NextRequest) {
         // Prompt including the request for specific behavior
         const prompt = `
     You are a social media expert for 'Kuwait Malayali', a news portal.
-    The provided news article might be in Malayalam. Analyze the Title and URL to understand the context.
+    The provided news article might be in Malayalam. Analyze the Title, Description, and URL to understand the context.
     
     Generate 10 trending, relevant, and high-reach hashtags in **ENGLISH** (Latin script) only.
     
     Title: "${title}"
+    Description: "${description || ''}"
     URL: "${url}"
     
     Rules:
